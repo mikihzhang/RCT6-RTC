@@ -8,23 +8,19 @@ extern u8 MACAddr[6];
 extern u8 IPAddr[4];
 extern u8 GWIPAddr[4];
 extern u8 IPMask[4];
-extern u8 DESIP[4];
 
 // Socket IDs
-extern u8 SocketId_UDP;   // ÓÃÓÚ·¢ËÍÊı¾İµÄUDP Socket
-extern u8 SocketId_MQTT;  // ÓÃÓÚÁ¬½ÓBrokerµÄTCP Socket
+extern u8 SocketId_UDP;   // ç”¨äºå‘é€æ•°æ®çš„UDP Socket
+extern u8 SocketId_MQTT;  // MQTT Broker TCP Socket
 
-extern u8 MQTT_Conn_Flag; // TCPÁ¬½Ó×´Ì¬±êÖ¾
+extern u8 MQTT_Conn_Flag; // TCPè¿æ¥çŠ¶æ€æ ‡å¿—
 
 void mStopIfError(u8 iError);
 void TIM2_Init(void);
 void WCHNET_CreateUdpSocket(void);
-void WCHNET_CreateMqttSocket(void); // ĞÂÔö£º´´½¨TCP Socket
+void WCHNET_CreateMqttSocket(void); // MQTT TCP Socket
 void WCHNET_HandleSockInt(u8 socketid, u8 intstat);
 void WCHNET_HandleGlobalInt(void);
-void WCHNET_UDP_Recv(u8 id, u8 *buf, u32 len, u8 *addr, u16 port);
-// ĞÂÔö£º·¢ËÍUDPÊı¾İµ½¶¯Ì¬IPµÄº¯Êı
-void UDP_SendTo_DynamicIP(u8 mb_id, char *data, u32 len);
-void WCHNET_CreateUDP(void);
+void UDP_SendTo_DynamicIP(u8 mb_id, const char *data, u32 len);
 
 #endif

@@ -4,17 +4,21 @@
 #include <stdint.h>
 #include "ch32v20x.h"
 
-// ¶¨Òå½âÎöºóµÄÊı¾İ½á¹¹
+// MQTT è§£æç»“æ„ä½“
 typedef struct {
     char sys_time[25]; // "2026-01-09 10:53:30"
-    int mb_id;         // Ö÷°åĞòºÅ
-    int bs_id;         // »ùÕ¾ĞòºÅ
-    int sensor_id;     // ´«¸ĞÆ÷ĞòºÅ
-    char mode[16];     // inspection »ò manual
+    int mb_id;         // ä¸»æ¿ç¼–å·
+    int bs_id;         // ç«™ç‚¹ç¼–å·
+    int sensor_id;     // ä¼ æ„Ÿå™¨ç¼–å·
+    char mode[16];     // æ¨¡å¼å­—ç¬¦ä¸²
 } ParsedData_t;
 
-// º¯ÊıÉùÃ÷
-// ×¢ÒâÔö¼ÓÁË socket_id ²ÎÊı£¬ÓÃÓÚ UDP ·¢ËÍ
-void Process_Network_Packet(u8 socket_id, char* payload, uint16_t len);
+// è§£æ MQTT JSON payload
+// æˆåŠŸè¿”å› 0ï¼Œå¤±è´¥è¿”å› -1
+int Parse_Mqtt_Json(const char *json, ParsedData_t *out_data);
+
+// ç”Ÿæˆä¸²å£å­—ç¬¦ä¸²(<=16å­—èŠ‚)ç”¨äºUDPå‘é€
+// è¿”å›ç”Ÿæˆçš„é•¿åº¦ï¼Œå¤±è´¥è¿”å› -1
+int Build_Serial_Udp_String(const ParsedData_t *data, char *out_buf, uint16_t out_len);
 
 #endif

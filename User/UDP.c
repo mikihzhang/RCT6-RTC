@@ -2,31 +2,28 @@
 #include "stdio.h"
 #include "wchnet.h"
 #include "debug.h"
-#include "app_logic.h"
 
 #define UDP_RECE_BUF_LEN  1472
 
 /* Global Variables */
 u8 SocketId;
-// u8 SocketRecvBuf[WCHNET_MAX_SOCKET_NUM][RECE_BUF_LEN]; // ½ÓÊÕ»º³åÇø
 
 u8 MACAddr[6];
-u8 IPAddr[4] = { 10, 1, 3, 100 };         // ±¾»úIP (Ê¾Àý)
-u8 GWIPAddr[4] = { 10, 1, 0, 254 };       // Íø¹Ø/NanoPi IP
+u8 IPAddr[4] = { 10, 1, 3, 100 };         // æœ¬æœºIP (ç¤ºä¾‹)
+u8 GWIPAddr[4] = { 10, 1, 0, 254 };       // ç½‘å…³/NanoPi IP
 u8 IPMask[4] = { 255, 255, 248, 0 };
-u8 DESIP[4] = { 10, 1, 3, 0 };            // Ä¬ÈÏÄ¿±ê
 
-// MQTT Broker IP (Í¨³£ÊÇNanoPiµÄIP£¬ÕâÀïÉèÎªÍø¹ØIP£¬Çë¸ù¾ÝÊµ¼ÊÇé¿öÐÞ¸Ä)
-u8 MQTT_BROKER_IP[4] = { 10, 1, 0, 254 }; 
+// MQTT Broker IP (é€šå¸¸ä¸Ž NanoPi IP ä¸€è‡´)
+u8 MQTT_BROKER_IP[4] = { 10, 1, 0, 254 };
 u16 MQTT_BROKER_PORT = 1883;
 
 u8 SocketId_UDP = 0xFF;
 u8 SocketId_MQTT = 0xFF;
-u8 MQTT_Conn_Flag = 0; // 0:¶Ï¿ª, 1:ÒÑÁ¬½ÓTCP
+u8 MQTT_Conn_Flag = 0; // 0:æ–­å¼€, 1:å·²è¿žæŽ¥TCP
 
 u8 SocketRecvBuf[WCHNET_MAX_SOCKET_NUM][UDP_RECE_BUF_LEN];
 
-// ÓÃÓÚ´«µÝ½ÓÊÕµ½µÄMQTTÊý¾Ý¸øMain Loop
+// MQTT æŽ¥æ”¶ç¼“å†²
 extern u8 MqttRxBuffer[2048];
 extern volatile u16 MqttRxLen;
 
@@ -36,107 +33,98 @@ void mStopIfError(u8 iError)
     printf("Error: %02X\r\n", (u16) iError);
 }
 
-// ´´½¨ÓÃÓÚ×ª·¢Êý¾ÝµÄUDP Socket
+// UDP Socket (ç”¨äºŽå‘é€)
 void WCHNET_CreateUdpSocket(void)
 {
     u8 i;
     SOCK_INF TmpSocketInf;
     memset((void *) &TmpSocketInf, 0, sizeof(SOCK_INF));
-    
-    // Ô´¶Ë¿ÚÉèÎª 2000, Ä¿±ê¶Ë¿Ú 1000
-    memcpy((void *) TmpSocketInf.IPAddr, DESIP, 4);
+
     TmpSocketInf.DesPort = 1000;
-    TmpSocketInf.SourPort = 2000; 
+    TmpSocketInf.SourPort = 2000;
     TmpSocketInf.ProtoType = PROTO_TYPE_UDP;
-    TmpSocketInf.RecvStartPoint = (u32) SocketRecvBuf[0]; // Ê¹ÓÃ Buffer 0
+    TmpSocketInf.RecvStartPoint = (u32) SocketRecvBuf[0];
     TmpSocketInf.RecvBufLen = UDP_RECE_BUF_LEN;
-    
+
     i = WCHNET_SocketCreat(&SocketId_UDP, &TmpSocketInf);
     printf("UDP Socket Created: %d\r\n", SocketId_UDP);
     mStopIfError(i);
 }
 
-// ´´½¨ÓÃÓÚÁ¬½ÓMQTT BrokerµÄTCP Socket
+// MQTT TCP Socket
 void WCHNET_CreateMqttSocket(void)
 {
     u8 i;
     SOCK_INF TmpSocketInf;
     memset((void *) &TmpSocketInf, 0, sizeof(SOCK_INF));
-    
+
     memcpy((void *) TmpSocketInf.IPAddr, MQTT_BROKER_IP, 4);
     TmpSocketInf.DesPort = MQTT_BROKER_PORT;
-    TmpSocketInf.SourPort = 3000; // ±¾µØTCP¶Ë¿Ú
+    TmpSocketInf.SourPort = 3000;
     TmpSocketInf.ProtoType = PROTO_TYPE_TCP;
-    TmpSocketInf.RecvStartPoint = (u32) SocketRecvBuf[1]; // Ê¹ÓÃ Buffer 1
+    TmpSocketInf.RecvStartPoint = (u32) SocketRecvBuf[1];
     TmpSocketInf.RecvBufLen = UDP_RECE_BUF_LEN;
-    
+
     i = WCHNET_SocketCreat(&SocketId_MQTT, &TmpSocketInf);
     printf("MQTT TCP Socket Created: %d\r\n", SocketId_MQTT);
     mStopIfError(i);
-    
-    // Á¢¼´·¢ÆðTCPÁ¬½Ó
+
     i = WCHNET_SocketConnect(SocketId_MQTT);
     mStopIfError(i);
 }
 
-// ·¢ËÍUDPÊý¾Ýµ½Ö¸¶¨µÄ mb_id (10.1.3.x)
+// å‘é€UDPæ•°æ®åˆ°åŠ¨æ€IP: 10.1.3.{mb_id}
 extern SOCK_INF SocketInf[];
-void UDP_SendTo_DynamicIP(u8 mb_id, char *data, u32 len)
+void UDP_SendTo_DynamicIP(u8 mb_id, const char *data, u32 len)
 {
-    if(SocketId_UDP == 0xFF) return;
-
-    // 1. ±¸·Ý¾ÉIP
     u8 old_ip[4];
-    memcpy(old_ip, SocketInf[SocketId_UDP].IPAddr, 4);
-
-    // 2. ÉèÖÃÄ¿±êIP: 10.1.3.{mb_id}
     u8 target_ip[4] = {10, 1, 3, mb_id};
+    u32 send_len = len;
+
+    if (SocketId_UDP == 0xFF || !data || len == 0) {
+        return;
+    }
+
+    memcpy(old_ip, SocketInf[SocketId_UDP].IPAddr, 4);
     memcpy(SocketInf[SocketId_UDP].IPAddr, target_ip, 4);
 
-    // 3. ·¢ËÍÊý¾Ý
-    u32 send_len = len;
     WCHNET_SocketSend(SocketId_UDP, (u8*)data, &send_len);
-    printf("UDP Send to 10.1.3.%d Len:%d\r\n", mb_id, send_len);
+    printf("UDP Send to 10.1.3.%d Len:%d Data:%s\r\n", mb_id, send_len, data);
 
-    // 4. »Ö¸´IP (ÒÔÃâÓ°ÏìÆäËûÂß¼­)
     memcpy(SocketInf[SocketId_UDP].IPAddr, old_ip, 4);
 }
 
 void WCHNET_HandleSockInt(u8 socketid, u8 intstat)
 {
-    if (intstat & SINT_STAT_RECV) // ÊÕµ½Êý¾Ý
+    if (intstat & SINT_STAT_RECV) // æ”¶åˆ°æ•°æ®
     {
         u32 len = WCHNET_SocketRecvLen(socketid, NULL);
-        if(socketid == SocketId_MQTT) 
+        if (socketid == SocketId_MQTT)
         {
-            // Èç¹ûÊÇMQTTÊý¾Ý£¬¶ÁÈëµ½Ö÷Ñ­»·»º³åÇø
-            // ×¢Òâ£ºÕâÀï¼òµ¥´¦Àí£¬Êµ¼ÊÓ¦¿¼ÂÇ»·ÐÎ»º³å
-            if(len > 0 && len < 2048) {
+            if (len > 0 && len < 2048) {
                 WCHNET_SocketRecv(socketid, MqttRxBuffer, &len);
-                MqttRxLen = len; // Í¨ÖªÖ÷Ñ­»·´¦Àí
+                MqttRxLen = len;
             }
         }
-        else 
+        else
         {
-            // Çå¿ÕÆäËûSocketµÄÊý¾Ý
             WCHNET_SocketRecv(socketid, NULL, &len);
         }
     }
-    
-    if (intstat & SINT_STAT_CONNECT) // TCPÁ¬½Ó³É¹¦
+
+    if (intstat & SINT_STAT_CONNECT)
     {
-        if(socketid == SocketId_MQTT) {
+        if (socketid == SocketId_MQTT) {
             printf("MQTT TCP Connected!\r\n");
             MQTT_Conn_Flag = 1;
         }
     }
-    
-    if (intstat & SINT_STAT_DISCONNECT) // TCP¶Ï¿ª
+
+    if (intstat & SINT_STAT_DISCONNECT)
     {
-        if(socketid == SocketId_MQTT) {
+        if (socketid == SocketId_MQTT) {
             printf("MQTT TCP Disconnected!\r\n");
             MQTT_Conn_Flag = 0;
-            // ¿ÉÒÔÔÚmainÖÐ¼ì²â´Ë±êÖ¾²¢ÖØÁ¬
         }
     }
 }
@@ -160,55 +148,5 @@ void WCHNET_HandleGlobalInt(void)
             if (socketint)
                 WCHNET_HandleSockInt(i, socketint);
         }
-    }
-}
-
-/*
- * º¯ÊýÃû: WCHNET_UDP_Recv
- * ÃèÊö  : UDP½ÓÊÕ»Øµ÷º¯Êý
- */
-void WCHNET_UDP_Recv(u8 id, u8 *buf, u32 len, u8 *addr, u16 port)
-{
-    // ´òÓ¡À´Ô´ÐÅÏ¢
-    printf("RX from IP: %d.%d.%d.%d, Port: %d\r\n", 
-           addr[0], addr[1], addr[2], addr[3], port);
-
-    // °²È«´¦Àí×Ö·û´®½áÊø·û
-    if (len < RECE_BUF_LEN) {
-        buf[len] = '\0';
-    } else {
-        buf[RECE_BUF_LEN - 1] = '\0';
-    }
-
-    // µ÷ÓÃÂß¼­´¦Àí
-    // ´«Èë id (SocketId) ÒÔ±ãÂß¼­²ãÊ¹ÓÃÍ¬Ò»¸öSocket¾ä±ú·¢ËÍÊý¾Ý
-    Process_Network_Packet(id, (char*)buf, (uint16_t)len);
-}
-
-/*
- * º¯ÊýÃû: WCHNET_CreateUDP
- * ÃèÊö  : ´´½¨UDP Socket
- */
-void WCHNET_CreateUDP(void)
-{
-    u8 i;
-    SOCK_INF TmpSocketInf;
-
-    memset((void *)&TmpSocketInf, 0, sizeof(SOCK_INF));
-
-    TmpSocketInf.SourPort = 8080;  // ¼àÌýÀ´×Ô NanoPi µÄ¶Ë¿Ú
-    TmpSocketInf.ProtoType = PROTO_TYPE_UDP;
-    
-    // ´´½¨Socket
-    i = WCHNET_SocketCreat(&SocketId, &TmpSocketInf);
-    if (i == WCHNET_ERR_SUCCESS)
-    {
-        printf("UDP Socket Created, ID: %d. Listening on Port 8080\r\n", SocketId);
-        // ×¢²á½ÓÊÕ»Øµ÷
-        WCHNET_RegisterRecvCallBack(SocketId, WCHNET_UDP_Recv);
-    }
-    else
-    {
-        printf("WCHNET_SocketCreat Fail: %02x\r\n", i);
     }
 }
